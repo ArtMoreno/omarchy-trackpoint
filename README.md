@@ -84,7 +84,7 @@ TrackPoint block in `~/.config/hypr/input.lua`, then run `hyprctl reload`.
 
 - Actions run your commands with your user's shell. Custom commands are
   yours to review.
-- No network access, no `sudo`, no background services.
+- No network access, no elevated privileges, no background services.
 
 ## License
 
