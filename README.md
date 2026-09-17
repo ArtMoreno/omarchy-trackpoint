@@ -3,7 +3,9 @@
 A ThinkPad TrackPoint widget for the Omarchy bar: a pointer sensitivity slider
 and a programmable middle button.
 
-![TrackPoint widget](preview.png)
+![ThinkPad wordmark in the bar](screenshot-wordmark.png)
+
+![Bar icon options](screenshot-icons.png)
 
 ## Features
 
