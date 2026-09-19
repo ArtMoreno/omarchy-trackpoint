@@ -38,10 +38,11 @@ and a programmable middle button.
 - Presets for stock Omarchy commands (menus, screenshots, media, lock screen,
   nightlight, notifications and more), or any custom shell command.
 - **Choice of bar icon.** The red *ThinkPad* wordmark, a red TrackPoint dot,
-  or the color ThinkPad logo. Pick one under *Bar icon* in the panel, or run:
+  a dot in the bar's own icon color (follows the theme), or the color ThinkPad
+  logo. Pick one under *Bar icon* in the panel, or run:
 
   ```sh
-  omarchy bar set io.github.artmoreno.trackpoint logo wordmark   # or: dot, color
+  omarchy bar set io.github.artmoreno.trackpoint logo wordmark   # or: dot, theme, color
   ```
 
 ## Requirements

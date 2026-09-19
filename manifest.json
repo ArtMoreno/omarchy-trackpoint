@@ -25,8 +25,8 @@
         "key": "logo",
         "type": "string",
         "label": "Bar icon",
-        "description": "wordmark (ThinkPad text), dot (red TrackPoint dot) or color (color ThinkPad logo)",
-        "options": ["wordmark", "dot", "color"],
+        "description": "wordmark (ThinkPad text), dot (red TrackPoint dot), theme (dot in the bar's icon color) or color (color ThinkPad logo)",
+        "options": ["wordmark", "dot", "theme", "color"],
         "defaultValue": "wordmark"
       }
     ]
