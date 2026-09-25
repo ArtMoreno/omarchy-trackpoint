@@ -8,7 +8,12 @@ Panel {
   id: root
   moduleName: "io.github.artmoreno.trackpoint"
   ipcTarget: "io.github.artmoreno.trackpoint"
+  // manageIpc: false so this panel owns the single IpcHandler the target
+  // permits, which adds the device method below to Panel's open/close set.
+  manageIpc: false
   property real sensitivity: 0
+  // Whether Hyprland accepts input from the TrackPoint at all (pointer and its buttons)
+  property bool deviceEnabled: true
   property string device: ""
   property string status: ""
   property bool queued: false
@@ -145,6 +150,20 @@ Panel {
     // Dropdown assigns its own value on selection, which drops a binding
     profileDropdown.value = middleProfile
   }
+  function setDeviceEnabled(on) {
+    if (deviceWriter.running) return
+    status = on ? "Turning on…" : "Turning off…"
+    deviceWriter.command = ["python3", helper, on ? "on" : "off"]
+    deviceWriter.running = true
+  }
+  // omarchy-shell io.github.artmoreno.trackpoint device <on|off|toggle>
+  function deviceIpc(action) {
+    action = String(action || "toggle")
+    if (["on", "off", "toggle"].indexOf(action) === -1) return "usage: device <on|off|toggle>"
+    if (action === "toggle") action = deviceEnabled ? "off" : "on"
+    setDeviceEnabled(action === "on")
+    return action
+  }
   function setSensitivity(value) {
     sensitivity = Math.round(Math.max(-1, Math.min(1, value)) * 100) / 100
     status = "Saving…"
@@ -175,10 +194,35 @@ Panel {
         try {
           var data = JSON.parse(text)
           if (data.error) root.status = data.error
-          else { root.sensitivity = data.value; root.device = data.device || ""; root.status = "" }
+          else { root.sensitivity = data.value; root.device = data.device || ""; root.deviceEnabled = data.enabled !== false; root.status = "" }
         } catch (e) { root.status = "Could not read sensitivity." }
       }
     }
+  }
+  Process {
+    id: deviceWriter
+    stdout: StdioCollector {
+      onStreamFinished: {
+        try {
+          var data = JSON.parse(text)
+          if (data.error) root.status = data.error
+          else { root.deviceEnabled = data.enabled !== false; root.status = root.deviceEnabled ? "TrackPoint on" : "TrackPoint off" }
+        } catch (e) { root.status = "Could not switch the TrackPoint." }
+      }
+    }
+    onExited: function(exitCode, exitStatus) {
+      if (exitCode !== 0 && (root.status === "Turning on…" || root.status === "Turning off…")) root.status = "Could not switch the TrackPoint."
+    }
+  }
+  IpcHandler {
+    target: root.ipcTarget
+
+    function open(): void { root.open() }
+    function close(): void { root.close() }
+    function show(): void { root.open() }
+    function hide(): void { root.close() }
+    function toggle(): void { root.toggle() }
+    function device(action: string): string { return root.deviceIpc(action) }
   }
   Process {
     id: writer
@@ -253,7 +297,7 @@ Panel {
     id: button
     anchors.fill: parent
     bar: root.bar
-    tooltipText: root.device ? "TrackPoint · " + root.device : "TrackPoint"
+    tooltipText: (root.device ? "TrackPoint · " + root.device : "TrackPoint") + (root.deviceEnabled ? "" : " · off")
     // The wordmark and color logo are wider than the square icon slot.
     fixedWidth: vertical || root.logo === "dot" ? -1
       : root.logo === "color" ? colorLogoWidth + Style.space(12)
@@ -263,6 +307,7 @@ Panel {
     readonly property int colorLogoWidth: Math.ceil(colorLogoHeight * 768 / 274)
     iconComponent: Component {
       Item {
+        opacity: root.deviceEnabled ? 1 : 0.4
         Text {
           anchors.centerIn: parent
           visible: root.logo === "wordmark"
@@ -316,12 +361,39 @@ Panel {
         id: content
         width: parent.width
         spacing: Style.space(12)
+        Item {
+          width: parent.width
+          implicitHeight: Math.max(deviceTitle.implicitHeight, deviceSwitch.implicitHeight)
+          Text {
+            id: deviceTitle
+            anchors.verticalCenter: parent.verticalCenter
+            text: "TrackPoint"
+            color: root.bar.foreground
+            font.family: root.bar.fontFamily
+            font.pixelSize: Style.font.title
+            font.bold: true
+          }
+          Button {
+            id: deviceSwitch
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            text: root.deviceEnabled ? "Turn off" : "Turn on"
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+            bordered: true
+            focusable: true
+            onClicked: root.setDeviceEnabled(!root.deviceEnabled)
+          }
+        }
         Text {
-          text: "TrackPoint"
+          visible: !root.deviceEnabled
+          width: parent.width
+          text: "The TrackPoint is off: moving it or pressing its buttons does nothing. Kept for the next login."
+          wrapMode: Text.WordWrap
           color: root.bar.foreground
+          opacity: 0.7
           font.family: root.bar.fontFamily
-          font.pixelSize: Style.font.title
-          font.bold: true
+          font.pixelSize: Style.font.caption
         }
         Text {
           text: "Pointer sensitivity  " + (slider.dragging ? slider.liveValue : root.sensitivity).toFixed(2)
