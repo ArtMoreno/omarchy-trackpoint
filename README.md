@@ -112,12 +112,12 @@ plugin is installed, you can also recover from a terminal with:
 python3 ~/.config/omarchy/plugins/io.github.artmoreno.trackpoint/control.py on
 ```
 
-## Credits
+## Contributors and thanks
 
-The device on/off switch was contributed by
-[Thord D. Hedengren (@tdhftw)](https://github.com/tdhftw) in
-[PR #1](https://github.com/ArtMoreno/omarchy-trackpoint/pull/1), with hardware
-testing on a ThinkPad X1 Carbon running Omarchy 4.x.
+Thank you to [Thord D. Hedengren (@tdhftw)](https://github.com/tdhftw) for
+contributing the TrackPoint on/off switch and device IPC commands in
+[PR #1](https://github.com/ArtMoreno/omarchy-trackpoint/pull/1), and for testing
+them on a ThinkPad X1 Carbon running Omarchy 4.x.
 
 ## Development checks
 
