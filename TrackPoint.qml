@@ -8,7 +8,14 @@ Panel {
   id: root
   moduleName: "io.github.artmoreno.trackpoint"
   ipcTarget: "io.github.artmoreno.trackpoint"
+  // manageIpc: false so this panel owns the single IpcHandler the target
+  // permits, which adds the device method below to Panel's open/close set.
+  manageIpc: false
   property real sensitivity: 0
+  // Whether Hyprland accepts input from the TrackPoint at all (pointer and its buttons)
+  property bool deviceEnabled: true
+  property var deviceQueue: []
+  property int stateRevision: 0
   property string device: ""
   property string status: ""
   property bool queued: false
@@ -119,8 +126,14 @@ Panel {
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
+  function refreshDevice() {
+    if (!reader.running && !writer.running && !deviceWriter.running && deviceQueue.length === 0) {
+      reader.revision = stateRevision
+      reader.running = true
+    }
+  }
   function refresh() {
-    if (!reader.running && !writer.running) reader.running = true
+    refreshDevice()
     if (!middleReader.running && !middleWriter.running) middleReader.running = true
   }
   function choiceFor(command) {
@@ -145,7 +158,35 @@ Panel {
     // Dropdown assigns its own value on selection, which drops a binding
     profileDropdown.value = middleProfile
   }
+  function setDeviceEnabled(on) {
+    return requestDevice(on ? "on" : "off")
+  }
+  function requestDevice(action) {
+    // Preserve every accepted request, including an on following a pending off.
+    if (deviceQueue.length >= 32) return "busy: device queue is full"
+    stateRevision++
+    deviceQueue = deviceQueue.concat([action])
+    startDeviceWrite()
+    return "queued " + action
+  }
+  function startDeviceWrite() {
+    if (deviceWriter.running || deviceQueue.length === 0) return
+    var action = deviceQueue[0]
+    deviceQueue = deviceQueue.slice(1)
+    status = action === "toggle" ? "Switching TrackPoint…" : action === "on" ? "Turning on…" : "Turning off…"
+    deviceWriter.completed = false
+    // Python resolves toggle against the configuration while holding its lock.
+    deviceWriter.command = ["python3", helper, action]
+    deviceWriter.running = true
+  }
+  // omarchy-shell io.github.artmoreno.trackpoint device <on|off|toggle>
+  function deviceIpc(action) {
+    action = String(action || "toggle")
+    if (["on", "off", "toggle"].indexOf(action) === -1) return "usage: device <on|off|toggle>"
+    return requestDevice(action)
+  }
   function setSensitivity(value) {
+    stateRevision++
     sensitivity = Math.round(Math.max(-1, Math.min(1, value)) * 100) / 100
     status = "Saving…"
     if (writer.running) { queued = true; return }
@@ -169,16 +210,58 @@ Panel {
 
   Process {
     id: reader
+    property int revision: 0
     command: ["python3", root.helper]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        // A read started before a user action must not overwrite its result.
+        if (reader.revision !== root.stateRevision || deviceWriter.running || writer.running || root.deviceQueue.length) return
+        try {
+          var data = JSON.parse(text)
+          if (data.error) root.status = data.error
+          else { root.sensitivity = data.value; root.device = data.device || ""; root.deviceEnabled = data.enabled !== false }
+        } catch (e) { root.status = "Could not read sensitivity." }
+      }
+    }
+  }
+  Process {
+    id: deviceWriter
+    property bool completed: false
     stdout: StdioCollector {
       onStreamFinished: {
         try {
           var data = JSON.parse(text)
           if (data.error) root.status = data.error
-          else { root.sensitivity = data.value; root.device = data.device || ""; root.status = "" }
-        } catch (e) { root.status = "Could not read sensitivity." }
+          else { root.deviceEnabled = data.enabled !== false; root.device = data.device || ""; root.status = root.deviceEnabled ? "TrackPoint on" : "TrackPoint off" }
+        } catch (e) { root.status = "Could not switch the TrackPoint." }
       }
     }
+    onExited: function(exitCode, exitStatus) {
+      completed = true
+      if (exitCode !== 0 && (root.status === "Turning on…" || root.status === "Turning off…" || root.status === "Switching TrackPoint…")) root.status = "Could not switch the TrackPoint."
+    }
+    onRunningChanged: {
+      if (running) return
+      if (!completed) root.status = "Could not start the TrackPoint helper."
+      Qt.callLater(function() { root.startDeviceWrite() })
+    }
+  }
+  // Keep closed widgets and additional monitors in sync with CLI/config edits.
+  Timer {
+    interval: 2000
+    running: true
+    repeat: true
+    onTriggered: root.refreshDevice()
+  }
+  IpcHandler {
+    target: root.ipcTarget
+
+    function open(): void { root.open() }
+    function close(): void { root.close() }
+    function show(): void { root.open() }
+    function hide(): void { root.close() }
+    function toggle(): void { root.toggle() }
+    function device(action: string): string { return root.deviceIpc(action) }
   }
   Process {
     id: writer
@@ -253,7 +336,7 @@ Panel {
     id: button
     anchors.fill: parent
     bar: root.bar
-    tooltipText: root.device ? "TrackPoint · " + root.device : "TrackPoint"
+    tooltipText: (root.device ? "TrackPoint · " + root.device : "TrackPoint") + (root.deviceEnabled ? "" : " · off")
     // The wordmark and color logo are wider than the square icon slot.
     fixedWidth: vertical || root.logo === "dot" ? -1
       : root.logo === "color" ? colorLogoWidth + Style.space(12)
@@ -263,6 +346,7 @@ Panel {
     readonly property int colorLogoWidth: Math.ceil(colorLogoHeight * 768 / 274)
     iconComponent: Component {
       Item {
+        opacity: root.deviceEnabled ? 1 : 0.4
         Text {
           anchors.centerIn: parent
           visible: root.logo === "wordmark"
@@ -316,12 +400,40 @@ Panel {
         id: content
         width: parent.width
         spacing: Style.space(12)
+        Item {
+          width: parent.width
+          implicitHeight: Math.max(deviceTitle.implicitHeight, deviceSwitch.implicitHeight)
+          Text {
+            id: deviceTitle
+            anchors.verticalCenter: parent.verticalCenter
+            text: "TrackPoint"
+            color: root.bar.foreground
+            font.family: root.bar.fontFamily
+            font.pixelSize: Style.font.title
+            font.bold: true
+          }
+          Button {
+            id: deviceSwitch
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            text: root.deviceEnabled ? "Turn off" : "Turn on"
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+            bordered: true
+            focusable: true
+            enabled: !deviceWriter.running && root.deviceQueue.length === 0
+            onClicked: root.setDeviceEnabled(!root.deviceEnabled)
+          }
+        }
         Text {
-          text: "TrackPoint"
+          visible: !root.deviceEnabled
+          width: parent.width
+          text: "The TrackPoint is off: moving it or pressing its buttons does nothing. Kept for the next login."
+          wrapMode: Text.WordWrap
           color: root.bar.foreground
+          opacity: 0.7
           font.family: root.bar.fontFamily
-          font.pixelSize: Style.font.title
-          font.bold: true
+          font.pixelSize: Style.font.caption
         }
         Text {
           text: "Pointer sensitivity  " + (slider.dragging ? slider.liveValue : root.sensitivity).toFixed(2)
