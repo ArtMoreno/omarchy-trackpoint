@@ -82,8 +82,8 @@ def bind_block(state):
 
 
 def reload():
-    subprocess.run(['hyprctl', 'reload', 'config-only'], capture_output=True, text=True, check=True)
-    return subprocess.run(['hyprctl', 'configerrors'], capture_output=True, text=True, check=True).stdout.strip()
+    subprocess.run(['hyprctl', 'reload', 'config-only'], capture_output=True, text=True, check=True, timeout=5)
+    return subprocess.run(['hyprctl', 'configerrors'], capture_output=True, text=True, check=True, timeout=5).stdout.strip()
 
 
 def write_binds(state):
@@ -99,12 +99,12 @@ def write_binds(state):
     except Exception:
         # Hyprland keeps running on a broken config, so put the file back.
         config.write_text(text)
-        subprocess.run(['hyprctl', 'reload', 'config-only'], capture_output=True, text=True)
+        subprocess.run(['hyprctl', 'reload', 'config-only'], capture_output=True, text=True, timeout=5)
         raise
 
 
 def focused_class():
-    out = subprocess.run(['hyprctl', 'activewindow', '-j'], capture_output=True, text=True, check=True).stdout
+    out = subprocess.run(['hyprctl', 'activewindow', '-j'], capture_output=True, text=True, check=True, timeout=5).stdout
     try:
         return json.loads(out).get('class', '')
     except (ValueError, AttributeError):
@@ -138,52 +138,53 @@ def restore_scroll(device, previous):
 
 
 try:
-    state = load()
-    previous_store = store.read_text() if store.exists() else None
-    result = {}
-    args = sys.argv[1:]
-    if args:
-        profiles = state['profiles']
-        if args == ['enable']:
-            enable(state)
-        elif args == ['disable']:
-            disable(state)
-        elif args[0] == 'set' and len(args) == 4:
-            profile, slot, command = args[1], args[2], args[3].strip()
-            if slot not in SLOTS:
-                raise ValueError(f'Unknown action: {slot}')
-            if profile not in profiles:
-                raise ValueError(f'No profile for {profile}')
-            if '\n' in command or '\r' in command:
-                raise ValueError('Command must be a single line.')
-            if command:
-                profiles[profile][slot] = command
-            else:
-                profiles[profile].pop(slot, None)
-        elif args[0] == 'add-app' and len(args) in (1, 2):
-            app = (args[1] if len(args) == 2 else focused_class()).strip()
-            if not app or app == 'default':
-                raise ValueError('No focused app to add.')
-            profiles.setdefault(app, {})
-            result['added'] = app
-        elif args[0] == 'remove-app' and len(args) == 2 and args[1] != 'default':
-            profiles.pop(args[1], None)
-        elif args != ['sync']:
-            raise ValueError(usage)
+    with hypr_input.transaction():
+        state = load()
+        previous_store = store.read_text() if store.exists() else None
+        result = {}
+        args = sys.argv[1:]
+        if args:
+            profiles = state['profiles']
+            if args == ['enable']:
+                enable(state)
+            elif args == ['disable']:
+                disable(state)
+            elif args[0] == 'set' and len(args) == 4:
+                profile, slot, command = args[1], args[2], args[3].strip()
+                if slot not in SLOTS:
+                    raise ValueError(f'Unknown action: {slot}')
+                if profile not in profiles:
+                    raise ValueError(f'No profile for {profile}')
+                if '\n' in command or '\r' in command:
+                    raise ValueError('Command must be a single line.')
+                if command:
+                    profiles[profile][slot] = command
+                else:
+                    profiles[profile].pop(slot, None)
+            elif args[0] == 'add-app' and len(args) in (1, 2):
+                app = (args[1] if len(args) == 2 else focused_class()).strip()
+                if not app or app == 'default':
+                    raise ValueError('No focused app to add.')
+                profiles.setdefault(app, {})
+                result['added'] = app
+            elif args[0] == 'remove-app' and len(args) == 2 and args[1] != 'default':
+                profiles.pop(args[1], None)
+            elif args != ['sync']:
+                raise ValueError(usage)
 
-        save(state)
-        try:
-            write_binds(state)
-        except Exception:
-            if previous_store is None:
-                store.unlink(missing_ok=True)
-            else:
-                store.write_text(previous_store)
-            raise
+            save(state)
+            try:
+                write_binds(state)
+            except Exception:
+                if previous_store is None:
+                    store.unlink(missing_ok=True)
+                else:
+                    store.write_text(previous_store)
+                raise
 
-    result['enabled'] = state['enabled']
-    result['profiles'] = state['profiles']
-    print(json.dumps(result))
+        result['enabled'] = state['enabled']
+        result['profiles'] = state['profiles']
+        print(json.dumps(result))
 except Exception as exc:
     print(json.dumps({'error': str(exc)}))
     sys.exit(1)

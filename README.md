@@ -20,6 +20,11 @@ and a programmable middle button.
   omarchy-shell io.github.artmoreno.trackpoint device toggle   # or: on, off
   ```
 
+  IPC replies with `queued on`, `queued off`, or `queued toggle` when it accepts
+  a request; the panel reports the completed result or error. Requests run in
+  order, and toggle reads the saved state when it executes. The bar polls for
+  external changes every two seconds when no operation is pending.
+
 - **Sensitivity slider.** Drag and release to set the TrackPoint pointer
   sensitivity from -1 (slower) to 1 (faster). Arrow keys adjust it while the
   panel is focused. Applied instantly and kept for the next login.
@@ -60,6 +65,9 @@ The widget only edits your Hyprland config when you use its controls, and it
 checks every change with `hyprctl configerrors`, putting the file back if
 Hyprland reports a problem.
 
+Plugin configuration operations share a lock through validation and rollback.
+Input-file updates are atomic and preserve symlinks and file permissions.
+
 | When | File | Change |
 |---|---|---|
 | You move the sensitivity slider | `~/.config/hypr/input.lua` | Sets `sensitivity` in your existing `hl.device` block for the TrackPoint. If you have none, adds a block marked `-- BEGIN io.github.artmoreno.trackpoint device`, removed again when you reset to default. |
@@ -94,6 +102,34 @@ If you removed the plugin without step 1, delete the block between
 `-- BEGIN io.github.artmoreno.trackpoint middle button` and its `-- END` line in
 `~/.config/hypr/bindings.lua`, and remove `scroll_method = "no_scroll"` from the
 TrackPoint block in `~/.config/hypr/input.lua`, then run `hyprctl reload`.
+
+If the TrackPoint was off when you removed the plugin, use a keyboard-opened
+terminal to remove `enabled = false` from its `hl.device` block in
+`~/.config/hypr/input.lua`, then run `hyprctl reload config-only`. While the
+plugin is installed, you can also recover from a terminal with:
+
+```sh
+python3 ~/.config/omarchy/plugins/io.github.artmoreno.trackpoint/control.py on
+```
+
+## Credits
+
+The device on/off switch was contributed by
+[Thord D. Hedengren (@tdhftw)](https://github.com/tdhftw) in
+[PR #1](https://github.com/ArtMoreno/omarchy-trackpoint/pull/1), with hardware
+testing on a ThinkPad X1 Carbon running Omarchy 4.x.
+
+## Development checks
+
+```sh
+python3 -m unittest discover -s tests -v
+node --test tests/test_device_ipc.cjs
+git diff --check
+```
+
+These isolated tests use temporary configuration files, a fake `hyprctl`, and
+the QML JavaScript handlers. They do not replace live Hyprland/Quickshell
+testing on TrackPoint hardware.
 
 ## Notes
 
