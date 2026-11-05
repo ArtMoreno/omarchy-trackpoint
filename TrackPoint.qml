@@ -19,12 +19,13 @@ Panel {
   property string device: ""
   property string status: ""
   property bool queued: false
-  // Bar icon, set per widget with: omarchy bar set io.github.artmoreno.trackpoint logo <wordmark|dot|color>
-  readonly property string logo: ["wordmark", "dot", "color"].indexOf(String(setting("logo", "wordmark"))) !== -1
+  // Bar icon, set per widget with: omarchy bar set io.github.artmoreno.trackpoint logo <wordmark|dot|theme|color>
+  readonly property string logo: ["wordmark", "dot", "theme", "color"].indexOf(String(setting("logo", "wordmark"))) !== -1
     ? String(setting("logo", "wordmark")) : "wordmark"
   readonly property var logoOptions: [
     { value: "wordmark", label: "ThinkPad" },
     { value: "dot", label: "Red dot" },
+    { value: "theme", label: "Theme dot" },
     { value: "color", label: "Color logo" }
   ]
   readonly property string pluginDir: Quickshell.env("HOME") + "/.config/omarchy/plugins/io.github.artmoreno.trackpoint"
@@ -338,7 +339,7 @@ Panel {
     bar: root.bar
     tooltipText: (root.device ? "TrackPoint · " + root.device : "TrackPoint") + (root.deviceEnabled ? "" : " · off")
     // The wordmark and color logo are wider than the square icon slot.
-    fixedWidth: vertical || root.logo === "dot" ? -1
+    fixedWidth: vertical || root.logo === "dot" || root.logo === "theme" ? -1
       : root.logo === "color" ? colorLogoWidth + Style.space(12)
       : Math.ceil(logoMetrics.advanceWidth) + Style.space(12)
     readonly property int colorLogoHeight: Math.round(Style.bar.iconFont * 1.15)
@@ -356,11 +357,12 @@ Panel {
         }
         Rectangle {
           anchors.centerIn: parent
-          visible: root.logo === "dot"
+          visible: root.logo === "dot" || root.logo === "theme"
           width: Math.round(Style.bar.iconFont * 0.8)
           height: width
           radius: width / 2
-          color: "#e2231a"
+          // "theme" takes the same color the bar gives its other icons, so it tracks the theme live
+          color: root.logo === "theme" ? button.foreground : "#e2231a"
         }
         Image {
           anchors.centerIn: parent
